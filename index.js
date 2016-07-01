@@ -22,12 +22,22 @@ class ConsulServiceLeader extends EventEmitter {
         this.consul_session_renew_timeout = 0;
 
         this.services = [];
+    }
 
-        process.on('SIGTERM', () => {
-            clearTimeout(this.consul_session_renew_timeout);
-            clearTimeout(this.renew_find);
-            this.consul_session_release();
-        });
+    is_leader() {
+        return this.ID !== null;
+    }
+
+    is_not_leader() {
+        return this.ID === null;
+    }
+
+    consul_response_fail(response) {
+        if (!response.ok) {
+            this.emit('consul_agent_offline');
+            return true;
+        }
+        return false;
     }
 
     consul_service_find() {
@@ -36,8 +46,7 @@ class ConsulServiceLeader extends EventEmitter {
             .headers({ 'Accept': 'application/json', 'Content-Type': 'application/json' })
             .end((response) => {
 
-                if (!response.ok) {
-                    console.log('i cant connect to consul...');
+                if (this.consul_response_fail(response)) {
                     return setTimeout(() => {
                         this.consul_get_register_data();
                     }, 2000);
@@ -78,11 +87,7 @@ class ConsulServiceLeader extends EventEmitter {
                     ServiceID: item.ID
                 })
                 .end((response) => {
-                    if (response.ok) {
-                        console.log('register tcp check ok: ' + item.Service);
-                    } else {
-                        console.log('register tcp check fail: ' + item.Service);
-                    }
+                    this.emit('consul_check_register', response.ok === true);
                 });
         });
     }
@@ -105,17 +110,14 @@ class ConsulServiceLeader extends EventEmitter {
                     this.consul_kv_find();
                 }, 2000);
 
+                // no existe la clave
+                if (response.notFound)
+                    return this.consul_session_create();
+
                 // el agent consul no responde
-                if (!response.ok) {
-                    // consul do not responds and i have the lock, restart and wait for consul up
-                    if (this.ID !== null) {
-                        console.log('upsss, problems');
-                        process.exit(0);
-                    }
-                    this.consul_session_create();
+                if (this.consul_response_fail) {
                     return;
                 }
-
                 this.consul_kv_find_process(response.body, response.headers);
             });
     }
@@ -124,26 +126,25 @@ class ConsulServiceLeader extends EventEmitter {
         this.find_index = headers['x-consul-index'];
 
         // i dont have the lock
-        if (this.ID === null) {
+        if (this.is_not_leader()) {
             //nobody has the lock
             if (body[0].Session === undefined) {
                 this.consul_session_create();
             }
             //
             else {
-                console.log('somelse has the lock, wait for release ..');
+                this.emit('consul_leader_exists');
             }
         }
         // i have the lock
         else {
             // consul confirm it
             if (body[0].Session === this.ID) {
-                console.log('i have the lock, check again in 10s');
+                this.emit('consul_leader_check');
             }
             // consul say another service has the lock
             else {
-                console.log('ups, i lost the lock, stop');
-                process.exit(0);
+                this.emit('consul_leader_lost');
             }
 
         }
@@ -199,14 +200,12 @@ class ConsulServiceLeader extends EventEmitter {
      */
     consul_kv_adquire_process(ID, is_adquire) {
         if (is_adquire) {
-            console.log('lock acquired');
             this.ID = ID;
-            this.emit('consul_leader');
+            this.emit('consul_lock_adquire');
             this.consul_check_create();
             this.consul_session_renew();
         } else {
-            console.log('lock NOT acquired');
-            this.emit('consul_not_leader');
+            this.emit('consul_lock_not_adquire');
             this.consul_kv_find(false);
         }
     }
@@ -218,37 +217,32 @@ class ConsulServiceLeader extends EventEmitter {
             .headers({ 'Accept': 'application/json', 'Content-Type': 'application/json' })
             .end((response) => {
 
-                if (!response.ok) {
-                    console.log('fail send data to consul');
-                // this never happend
-                //} else if (response.body[0].ID !== this.ID) {
-                //    console.log('session fail, stop server');
-                } else {
-                    console.log('i have the lock, renew session ttl');
-                    this.emit('consul_session_renew');
-                }
-
                 this.consul_session_renew_timeout = setTimeout(() => {
                     this.consul_session_renew();
                 }, 5000);
+
+                if (this.consul_response_fail()) {
+                    return;
+                } else {
+                    this.emit('consul_session_renew');
+                }
             });
     }
 
     // consul_session_renew_process(){}
 
     consul_session_release() {
+
+        clearTimeout(this.consul_session_renew_timeout);
+        clearTimeout(this.consul_kv_find_timeout);
+
         if (this.ID === null)
-            return this.emit('close');
+            return this.emit('consul_leader_release', true);
 
         const url = util.format('%s/v1/session/destroy/%s', this.consul_server, this.ID);
         Unirest.put(url)
             .end((response) => {
-                if (response.ok)
-                    console.log('release session ok');
-                else
-                    console.log('release session fail');
-
-                return this.emit('consul_close');
+                this.emit('consul_leader_release', response.ok === true);
             });
 
     }
