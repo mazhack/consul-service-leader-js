@@ -63,10 +63,10 @@ class ConsulServiceLeader extends EventEmitter {
             }
         });
 
-        this.consul_find_kv();
+        this.consul_kv_find();
     }
 
-    registerTcpCheck() {
+    consul_check_create() {
         const url = util.format('%s/v1/agent/check/register', this.consul_server);
         this.services.forEach((item) => {
             Unirest.put(url)
@@ -202,7 +202,7 @@ class ConsulServiceLeader extends EventEmitter {
             console.log('lock acquired');
             this.ID = ID;
             this.emit('consul_leader');
-            this.registerTcpCheck();
+            this.consul_check_create();
             this.consul_session_renew();
         } else {
             console.log('lock NOT acquired');
