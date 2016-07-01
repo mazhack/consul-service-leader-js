@@ -1,0 +1,27 @@
+{
+    "name": "consul-service-leader-js",
+    "version": "0.0.1",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "cover": "istanbul  cover _mocha",
+        "test": "mocha --recursive --bail --reporter spec test 2>&1",
+        "jshint-index": "jshint index.js",
+        "jshint-lib": "jshint lib",
+        "jshint-test": "jshint test",
+        "jshint-models": "jshint models"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git@github.com:mazhack/consul-service-leader-js.git"
+    },
+    "keywords": [
+        "consul",
+        "service"
+    ],
+    "author": "Juan Enrique Escobar Robles",
+    "license": "MIT",
+    "dependencies": {
+        "unirest": "^0.5.0"
+    }
+}

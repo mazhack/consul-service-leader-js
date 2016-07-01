@@ -1,1 +1,1 @@
-# consul_service_leader
+# consul-service-leader-js
