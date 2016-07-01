@@ -115,7 +115,7 @@ class ConsulServiceLeader extends EventEmitter {
                     return this.consul_session_create();
 
                 // el agent consul no responde
-                if (this.consul_response_fail) {
+                if (this.consul_response_fail(response)) {
                     return;
                 }
                 this.consul_kv_find_process(response.body, response.headers);
@@ -221,7 +221,7 @@ class ConsulServiceLeader extends EventEmitter {
                     this.consul_session_renew();
                 }, 5000);
 
-                if (this.consul_response_fail()) {
+                if (this.consul_response_fail(response)) {
                     return;
                 } else {
                     this.emit('consul_session_renew');
