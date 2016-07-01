@@ -48,7 +48,7 @@ class ConsulServiceLeader extends EventEmitter {
 
                 if (this.consul_response_fail(response)) {
                     return setTimeout(() => {
-                        this.consul_get_register_data();
+                        this.consul_service_find();
                     }, 2000);
                 }
 
