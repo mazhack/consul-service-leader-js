@@ -24,6 +24,62 @@ class ConsulServiceLeader extends EventEmitter {
         this.services = [];
     }
 
+    get(url) {
+        let req = Unirest.get(url).headers({ 'Accept': 'application/json', 'Content-Type': 'application/json' });
+        req.exec = function () {
+            return new Promise((resolve, reject) => {
+                this.end((response) => {
+                    if (response.ok)
+                        resolve(response);
+                    else
+                        reject(response.status);
+                });
+            });
+        }
+        return req;
+    }
+
+    consul_start() {
+        this.consul_service_find()
+            .then((services) => {
+                if (services) {
+                    this.consul_kv_find();
+                }
+            });
+    }
+
+    consul_service_find() {
+        const url = util.format('%s/v1/agent/services', this.consul_server);
+        return this.get(url).exec()
+            .then((response) => {
+                const services = [];
+
+                Object.keys(response.body).forEach((key) => {
+                    services.push(response.body[key]);
+                });
+
+                services.forEach((item) => {
+                    const r = this.service_register.find((name) => {
+                        return name === item.Service;
+                    });
+                    if (r) {
+                        this.services.push(item);
+                    }
+                });
+
+                if (this.services.length === 0)
+                    throw new Error('no services');
+
+                return this.services;
+            }).catch((error) => {
+                this.emit('services_not_found');
+                setTimeout(() => {
+                    this.consul_service_find();
+                }, 2000);
+                //return 1;
+            });
+    }
+
     is_leader() {
         return this.ID !== null;
     }
@@ -40,41 +96,42 @@ class ConsulServiceLeader extends EventEmitter {
         return false;
     }
 
-    consul_service_find() {
-        const url = util.format('%s/v1/agent/services', this.consul_server);
-        Unirest.get(url)
-            .headers({ 'Accept': 'application/json', 'Content-Type': 'application/json' })
-            .end((response) => {
+    /*
+        consul_service_find() {
+            const url = util.format('%s/v1/agent/services', this.consul_server);
+            Unirest.get(url)
+                .headers({ 'Accept': 'application/json', 'Content-Type': 'application/json' })
+                .end((response) => {
 
-                if (this.consul_response_fail(response)) {
-                    return setTimeout(() => {
-                        this.consul_service_find();
-                    }, 2000);
+                    if (this.consul_response_fail(response)) {
+                        return setTimeout(() => {
+                            this.consul_service_find();
+                        }, 2000);
+                    }
+
+                    this.consul_service_find_process(response.body);
+                });
+        }
+
+        consul_service_find_process(data) {
+            const services = [];
+
+            Object.keys(data).forEach((key) => {
+                services.push(data[key]);
+            });
+
+            services.forEach((item) => {
+                const r = this.service_register.find((name) => {
+                    return name === item.Service;
+                });
+                if (r) {
+                    this.services.push(item);
                 }
-
-                this.consul_service_find_process(response.body);
             });
-    }
 
-    consul_service_find_process(data) {
-        const services = [];
-
-        Object.keys(data).forEach((key) => {
-            services.push(data[key]);
-        });
-
-        services.forEach((item) => {
-            const r = this.service_register.find((name) => {
-                return name === item.Service;
-            });
-            if (r) {
-                this.services.push(item);
-            }
-        });
-
-        this.consul_kv_find();
-    }
-
+            this.consul_kv_find();
+        }
+    */
     consul_check_create() {
         const url = util.format('%s/v1/agent/check/register', this.consul_server);
         this.services.forEach((item) => {
